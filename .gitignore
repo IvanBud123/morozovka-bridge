@@ -1,4 +1,5 @@
 config.env
+.env
 *.log
 *.tmp
 *.bak
@@ -11,3 +12,4 @@ web/**/__pycache__/
 web/.venv/
 web/venv/
 *.pyc
+/venv/
