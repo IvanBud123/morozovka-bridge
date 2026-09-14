@@ -1,5 +1,9 @@
 # morozovka-bridge — web UI
 
+![CI](https://github.com/IvanBud123/morozovka-bridge/actions/workflows/ci.yml/badge.svg?branch=web-main)
+![License](https://img.shields.io/github/license/IvanBud123/morozovka-bridge)
+![Python](https://img.shields.io/badge/python-3.11+-blue)
+
 Веб-интерфейс для управления пробросом сервисов из изолированной сети вуза
 наружу через сервер с белым IP. Работает поверх OpenVPN, даёт удобный
 дашборд, управление сервисами, разделение ролей и автоматическое
