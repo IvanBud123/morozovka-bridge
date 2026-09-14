@@ -1,0 +1,11 @@
+# ShellCheck configuration for morozovka-bridge
+#
+# SC1090, SC1091 — "not following external source".
+#   Скрипты осознанно source-ят config.env и scripts/lib.sh,
+#   статический анализ их не видит.
+#
+# SC2154 — "variable is referenced but not assigned".
+#   Многие переменные приходят из config.env через окружение SSH.
+#   Проверка есть в самом скрипте через load_config.
+
+disable=SC1090,SC1091,SC2154

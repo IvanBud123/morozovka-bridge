@@ -57,7 +57,7 @@ async def _ssh_remote(cmd: str, timeout: float = 15.0) -> tuple[int, str, int]:
 
 
 def _last_line(s: str) -> str:
-    lines = [l for l in s.splitlines() if l.strip()]
+    lines = [line for line in s.splitlines() if line.strip()]
     return lines[-1] if lines else ""
 
 

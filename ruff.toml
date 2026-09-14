@@ -1,0 +1,6 @@
+# Ruff configuration for morozovka-bridge/web
+line-length = 120
+target-version = "py311"
+
+[lint]
+select = ["E", "F", "W"]

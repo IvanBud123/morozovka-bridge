@@ -1,0 +1,103 @@
+name: CI
+
+on:
+  push:
+    branches: [main, web-main]
+  pull_request:
+    branches: [main, web-main]
+  workflow_dispatch:
+
+# Отменяем старые запуски, если запушили новое изменение в ту же ветку.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # ────────────────────────────────────────────────────────────
+  #  ShellCheck — статический анализ всех bash-скриптов
+  # ────────────────────────────────────────────────────────────
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Detect shell scripts
+        id: detect
+        run: |
+          if compgen -G "*.sh" > /dev/null || compgen -G "scripts/*.sh" > /dev/null; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No shell scripts found — skipping ShellCheck"
+          fi
+
+      - name: Run ShellCheck
+        if: steps.detect.outputs.present == 'true'
+        uses: ludeeus/action-shellcheck@2.0.0
+        with:
+          severity: warning
+          scandir: '.'
+
+  # ────────────────────────────────────────────────────────────
+  #  Python — ruff + smoke-import + pytest (только если есть web/)
+  # ────────────────────────────────────────────────────────────
+  python:
+    name: Python
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Detect web/
+        id: detect
+        run: |
+          if [ -f web/requirements.txt ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::web/ not found — skipping Python jobs"
+          fi
+
+      - name: Set up Python
+        if: steps.detect.outputs.present == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        if: steps.detect.outputs.present == 'true'
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r web/requirements.txt
+          pip install ruff==0.6.9 pytest==8.3.3
+
+      - name: Ruff check
+        if: steps.detect.outputs.present == 'true'
+        run: ruff check web/
+
+      - name: Import smoke test
+        if: steps.detect.outputs.present == 'true'
+        env:
+          WEB_SECRET: ci-smoke-test-secret-not-for-production
+        run: |
+          python -c "from web import app, auth, config, db, models, chain_test, config_manager; print('Imports OK')"
+
+      - name: Pytest
+        if: steps.detect.outputs.present == 'true'
+        env:
+          WEB_SECRET: ci-smoke-test-secret-not-for-production
+        run: |
+          if [ -d web/tests ]; then
+            pytest web/tests/ -v --tb=short
+          else
+            echo "::notice::web/tests/ not found — skipping pytest"
+          fi

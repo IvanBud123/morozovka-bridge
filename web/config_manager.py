@@ -1,6 +1,6 @@
 """Синхронизация сервисов из БД в config.env и обратно."""
 from __future__ import annotations
-from pathlib import Path
+import re
 from sqlmodel import Session, select
 
 from . import config
@@ -47,7 +47,6 @@ def rebuild_config_env() -> None:
 
     original = CONFIG_ENV.read_text(encoding="utf-8").splitlines()
 
-    # Найти начало и конец массива SERVICES
     start_idx = None
     end_idx = None
     for i, line in enumerate(original):
@@ -62,7 +61,6 @@ def rebuild_config_env() -> None:
     if start_idx is not None and end_idx is not None:
         result = original[:start_idx] + new_block + original[end_idx + 1:]
     else:
-        # Массива нет — добавляем в конец
         result = original + ["", "# Автоматически сгенерировано morozovka-bridge", *new_block]
 
     CONFIG_ENV.write_text("\n".join(result) + "\n", encoding="utf-8")
@@ -70,7 +68,6 @@ def rebuild_config_env() -> None:
 
 def import_from_config_env() -> int:
     """Парсит SERVICES из config.env и создаёт записи в БД. Возвращает кол-во импортированных."""
-    import re
     from .db import init_db
 
     init_db()
@@ -78,7 +75,6 @@ def import_from_config_env() -> int:
         return 0
 
     text = CONFIG_ENV.read_text(encoding="utf-8")
-    # Ищем блок SERVICES=( ... )
     m = re.search(r"SERVICES=\(\s*\n(.*?)\n\)", text, re.DOTALL)
     if not m:
         return 0
@@ -89,9 +85,7 @@ def import_from_config_env() -> int:
         line = line.strip()
         if not line or line.startswith("#"):
             continue
-        # Убираем кавычки
         line = line.strip('"').strip("'")
-        # Убираем экранирование (если было)
         line = line.replace('\\"', '"').replace("\\$", "$").replace("\\`", "`").replace("\\\\", "\\")
         entries.append(line)
 
