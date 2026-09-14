@@ -1,0 +1,16 @@
+[Unit]
+Description=morozovka-bridge Web UI
+After=network-online.target openvpn-client@client.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/morozovka-bridge
+ExecStart=/opt/morozovka-bridge/web/.venv/bin/uvicorn web.app:app \
+    --host 127.0.0.1 --port 5000 --workers 1
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

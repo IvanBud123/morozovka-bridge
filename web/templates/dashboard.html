@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block title %}Дашборд — morozovka-bridge{% endblock %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2><i class="bi bi-speedometer2"></i> Дашборд</h2>
+  <button id="test-all" class="btn btn-outline-primary">
+    <i class="bi bi-play-circle"></i> Проверить всё
+  </button>
+</div>
+
+<div class="row mb-4">
+  <div class="col-md-3">
+    <div class="card text-bg-{{ 'success' if vpn_ok else 'danger' }}">
+      <div class="card-body">
+        <h5 class="card-title"><i class="bi bi-shield-check"></i> VPN</h5>
+        <p class="card-text mb-0">{{ "активен" if vpn_ok else "не поднят" }}</p>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card text-bg-info">
+      <div class="card-body">
+        <h5 class="card-title"><i class="bi bi-globe"></i> Внешний сервер</h5>
+        <p class="card-text mb-0">{{ external_host }}</p>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card text-bg-secondary">
+      <div class="card-body">
+        <h5 class="card-title"><i class="bi bi-diagram-3"></i> Сервисов</h5>
+        <p class="card-text mb-0">{{ services|length }}</p>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card text-bg-secondary">
+      <div class="card-body">
+        <h5 class="card-title"><i class="bi bi-person"></i> Роль</h5>
+        <p class="card-text mb-0">{{ user.role }}</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header d-flex justify-content-between">
+    <span>Сервисы</span>
+    <span class="text-muted small">Клик по строке — детали. 🔄 — обновить тест.</span>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover mb-0 align-middle" id="services-table">
+      <thead>
+        <tr>
+          <th style="width:80px">Статус</th>
+          <th>Имя</th>
+          <th>Внутренний</th>
+          <th>Внешний</th>
+          <th>Тип</th>
+          <th style="width:150px">Последний тест</th>
+          <th style="width:60px"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for svc in services %}
+        {% set run = last_tests.get(svc.id) %}
+        <tr data-id="{{ svc.id }}">
+          <td>
+            {% if run %}
+              {% if run.overall == "ok" %}
+                <span class="flag flag-ok" title="OK">🟢</span>
+              {% else %}
+                <span class="flag flag-fail" title="FAIL">🔴</span>
+              {% endif %}
+            {% else %}
+              <span class="flag flag-unknown" title="Нет данных">⚪</span>
+            {% endif %}
+          </td>
+          <td><a href="/services/{{ svc.id }}"><strong>{{ svc.name }}</strong></a>
+            {% if svc.description %}<br><small class="text-muted">{{ svc.description }}</small>{% endif %}
+          </td>
+          <td><code>{{ svc.internal_ip }}:{{ svc.internal_port }}</code></td>
+          <td><code>{{ external_host }}:{{ svc.external_port }}</code></td>
+          <td><span class="badge text-bg-{{ 'primary' if svc.type == 'http' else 'warning' }}">{{ svc.type }}</span></td>
+          <td class="text-muted small">
+            {% if run %}{{ run.finished_at.strftime("%H:%M:%S") }}{% else %}—{% endif %}
+          </td>
+          <td>
+            <button class="btn btn-sm btn-outline-secondary test-one" data-id="{{ svc.id }}"
+                    title="Прогнать тест">🔄</button>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" class="text-center text-muted py-4">Сервисов пока нет</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const testAllBtn = document.getElementById("test-all");
+const testOneBtns = document.querySelectorAll(".test-one");
+
+async function runOne(id) {
+  const row = document.querySelector(`tr[data-id="${id}"]`);
+  const flag = row.querySelector(".flag");
+  flag.textContent = "⏳";
+  flag.title = "Тест идёт...";
+  try {
+    const r = await fetch(`/services/${id}/test`, {
+      method: "POST", headers: {"X-Requested-With": "fetch"},
+    });
+    const data = await r.json();
+    if (data.overall === "ok") { flag.textContent = "🟢"; flag.title = "OK"; }
+    else { flag.textContent = "🔴"; flag.title = "FAIL"; }
+  } catch (e) {
+    flag.textContent = "⚠️"; flag.title = String(e);
+  }
+}
+
+testOneBtns.forEach(btn => btn.addEventListener("click", async e => {
+  e.stopPropagation();
+  await runOne(btn.dataset.id);
+}));
+
+testAllBtn.addEventListener("click", async () => {
+  testAllBtn.disabled = true;
+  testAllBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Проверяем...';
+  try {
+    const r = await fetch("/services/test-all", {
+      method: "POST", headers: {"X-Requested-With": "fetch"},
+    });
+    const data = await r.json();
+    for (const res of data.results) {
+      const row = document.querySelector(`tr[data-id="${res.service_id}"]`);
+      if (!row) continue;
+      const flag = row.querySelector(".flag");
+      flag.textContent = res.overall === "ok" ? "🟢" : "🔴";
+      flag.title = res.overall;
+    }
+  } finally {
+    testAllBtn.disabled = false;
+    testAllBtn.innerHTML = '<i class="bi bi-play-circle"></i> Проверить всё';
+  }
+});
+</script>
+{% endblock %}

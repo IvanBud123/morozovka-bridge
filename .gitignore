@@ -4,3 +4,10 @@ config.env
 *.bak
 .DS_Store
 /tmp/
+
+web/*.db
+web/__pycache__/
+web/**/__pycache__/
+web/.venv/
+web/venv/
+*.pyc

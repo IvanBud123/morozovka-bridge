@@ -1,0 +1,13 @@
+body { background-color: #f5f7fa; }
+
+.card { border: 1px solid rgba(0,0,0,.06); }
+
+.flag { font-size: 1.3rem; cursor: help; }
+
+#services-table tbody tr { cursor: pointer; }
+
+code { background: #f0f0f3; padding: 2px 6px; border-radius: 4px; font-size: 0.85em; }
+
+.table-hover tbody tr:hover { background-color: #f0f5ff; }
+
+.navbar-brand { font-weight: 600; }

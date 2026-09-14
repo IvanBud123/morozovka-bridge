@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}{{ "Пользователь" if target_user else "Новый пользователь" }}{% endblock %}
+{% block content %}
+
+<h2 class="mb-3">{{ "Редактировать" if target_user else "Новый пользователь" }}</h2>
+{% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+
+<form method="post" class="card">
+  <div class="card-body">
+    <div class="row g-3">
+      <div class="col-md-6">
+        <label class="form-label">Логин</label>
+        {% if target_user %}
+          <input class="form-control" value="{{ target_user.username }}" disabled>
+        {% else %}
+          <input name="username" class="form-control" required>
+        {% endif %}
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Email</label>
+        <input name="email" class="form-control" value="{{ target_user.email if target_user and target_user.email else '' }}">
+      </div>
+
+      <div class="col-md-4">
+        <label class="form-label">Роль</label>
+        <select name="role" class="form-select">
+          {% set cur = target_user.role if target_user else "viewer" %}
+          <option value="viewer"   {{ "selected" if cur=="viewer" }}>viewer — только чтение</option>
+          <option value="operator" {{ "selected" if cur=="operator" }}>operator — свои сервисы</option>
+          <option value="admin"    {{ "selected" if cur=="admin" }}>admin — всё</option>
+        </select>
+      </div>
+
+      <div class="col-md-4">
+        <label class="form-label">Пароль {{ "(оставьте пусто, чтобы не менять)" if target_user else "" }}</label>
+        <input name="{{ 'new_password' if target_user else 'password' }}" type="password" class="form-control"
+               {{ "required" if not target_user }}>
+      </div>
+
+      {% if target_user %}
+      <div class="col-md-4 d-flex align-items-end">
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" name="is_active"
+                 id="is_active" {{ "checked" if target_user.is_active }}>
+          <label class="form-check-label" for="is_active">Активен</label>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  <div class="card-footer d-flex justify-content-between">
+    <a href="/users" class="btn btn-outline-secondary">Отмена</a>
+    <button class="btn btn-primary">Сохранить</button>
+  </div>
+</form>
+
+{% endblock %}

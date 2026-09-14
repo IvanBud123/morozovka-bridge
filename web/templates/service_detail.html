@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}{{ service.name }} — morozovka-bridge{% endblock %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2><i class="bi bi-diagram-3"></i> {{ service.name }}</h2>
+  <div>
+    {% if user.can_edit(service) %}
+      <a href="/services/{{ service.id }}/edit" class="btn btn-outline-secondary">
+        <i class="bi bi-pencil"></i> Редактировать
+      </a>
+    {% endif %}
+    <button id="run-test" class="btn btn-primary">
+      <i class="bi bi-play-circle"></i> Прогнать тест
+    </button>
+  </div>
+</div>
+
+{% if service.description %}<p class="text-muted">{{ service.description }}</p>{% endif %}
+
+<div class="row">
+  <div class="col-md-6">
+    <div class="card mb-3">
+      <div class="card-header">Параметры</div>
+      <ul class="list-group list-group-flush">
+        <li class="list-group-item d-flex justify-content-between">
+          <span>Внутренний адрес</span>
+          <code>{{ service.internal_ip }}:{{ service.internal_port }}</code>
+        </li>
+        <li class="list-group-item d-flex justify-content-between">
+          <span>Внешний адрес</span>
+          <code>{{ external_host }}:{{ service.external_port }}</code>
+        </li>
+        <li class="list-group-item d-flex justify-content-between">
+          <span>VPN порт</span><code>{{ service.vpn_port }}</code>
+        </li>
+        <li class="list-group-item d-flex justify-content-between">
+          <span>Тип</span>
+          <span class="badge text-bg-{{ 'primary' if service.type == 'http' else 'warning' }}">{{ service.type }}</span>
+        </li>
+        <li class="list-group-item d-flex justify-content-between">
+          <span>Домен</span><code>{{ service.domain }}</code>
+        </li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header">
+        <span id="test-status">Результат теста</span>
+      </div>
+      <ul class="list-group list-group-flush" id="test-steps">
+        {% for step in last_steps %}
+          <li class="list-group-item d-flex align-items-start">
+            <span class="me-2">{{ "🟢" if step.ok else "🔴" }}</span>
+            <div>
+              <div>{{ step.name }}</div>
+              <small class="text-muted">{{ step.detail }}</small>
+              {% if not step.ok and step.hint %}
+                <div><small class="text-warning">💡 {{ step.hint }}</small></div>
+              {% endif %}
+            </div>
+          </li>
+        {% else %}
+          <li class="list-group-item text-muted">Тест ещё не запускался</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// escapeHtml() уже определена в /static/js/app.js
+const btn = document.getElementById("run-test");
+const statusEl = document.getElementById("test-status");
+const stepsEl = document.getElementById("test-steps");
+
+btn.addEventListener("click", async () => {
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Идёт тест...';
+  try {
+    const r = await fetch("/services/{{ service.id }}/test", {
+      method: "POST", headers: {"X-Requested-With": "fetch"},
+    });
+    const data = await r.json();
+    statusEl.textContent = data.overall === "ok" ? "✅ Всё работает" : "❌ Есть проблемы";
+    stepsEl.innerHTML = data.steps.map(s => `
+      <li class="list-group-item d-flex align-items-start">
+        <span class="me-2">${s.ok ? "🟢" : "🔴"}</span>
+        <div>
+          <div>${escapeHtml(s.name)}</div>
+          <small class="text-muted">${escapeHtml(s.detail)}</small>
+          ${(!s.ok && s.hint) ? `<div><small class="text-warning">💡 ${escapeHtml(s.hint)}</small></div>` : ""}
+          <div><small class="text-muted">${s.duration_ms} мс</small></div>
+        </div>
+      </li>
+    `).join("");
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-play-circle"></i> Прогнать тест';
+  }
+});
+</script>
+{% endblock %}

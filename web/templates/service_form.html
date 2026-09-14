@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}{{ "Редактирование" if service else "Новый сервис" }}{% endblock %}
+{% block content %}
+
+<h2 class="mb-3">{{ "Редактировать" if service else "Новый сервис" }}</h2>
+
+{% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+
+<form method="post" class="card">
+  <div class="card-body">
+    <div class="row g-3">
+      <div class="col-md-6">
+        <label class="form-label">Имя <span class="text-danger">*</span></label>
+        <input name="name" class="form-control" required pattern="[a-zA-Z0-9_\-]+"
+               value="{{ service.name if service else '' }}">
+        <div class="form-text">Латиница, цифры, _ и -</div>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Домен (для http)</label>
+        <input name="domain" class="form-control"
+               value="{{ service.domain if service else '_' }}">
+        <div class="form-text">Либо <code>_</code>, если домена нет</div>
+      </div>
+
+      <div class="col-md-6">
+        <label class="form-label">Внутренний IP <span class="text-danger">*</span></label>
+        <input name="internal_ip" class="form-control" required
+               value="{{ service.internal_ip if service else '192.168.50.2' }}">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Внутренний порт <span class="text-danger">*</span></label>
+        <input name="internal_port" type="number" class="form-control" required
+               value="{{ service.internal_port if service else '' }}">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">VPN порт <span class="text-danger">*</span></label>
+        <input name="vpn_port" type="number" class="form-control" required
+               value="{{ service.vpn_port if service else '' }}">
+        <div class="form-text">Порт на Малинке, 8000+</div>
+      </div>
+
+      <div class="col-md-3">
+        <label class="form-label">Тип <span class="text-danger">*</span></label>
+        <select name="type" class="form-select">
+          <option value="http" {{ "selected" if service and service.type == "http" else "" }}>http</option>
+          <option value="tcp" {{ "selected" if service and service.type == "tcp" else "" }}>tcp</option>
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Внешний порт <span class="text-danger">*</span></label>
+        <input name="external_port" type="number" class="form-control" required
+               value="{{ service.external_port if service else '' }}">
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">Описание</label>
+        <textarea name="description" class="form-control" rows="2">{{ service.description if service and service.description else '' }}</textarea>
+      </div>
+    </div>
+  </div>
+  <div class="card-footer d-flex justify-content-between">
+    <a href="/services" class="btn btn-outline-secondary">Отмена</a>
+    <button class="btn btn-primary">Сохранить</button>
+  </div>
+</form>
+
+{% if service %}
+<form method="post" action="/services/{{ service.id }}/delete"
+      onsubmit="return confirm('Удалить сервис {{ service.name }}?')">
+  <button class="btn btn-outline-danger mt-3"><i class="bi bi-trash"></i> Удалить сервис</button>
+</form>
+{% endif %}
+
+{% endblock %}
