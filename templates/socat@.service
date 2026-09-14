@@ -1,0 +1,18 @@
+[Unit]
+Description=morozovka-bridge socat forwarder (%i)
+After=network-online.target openvpn-client@client.service
+Wants=network-online.target
+After=openvpn-client@client.service
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/morozovka-bridge/services/%i.env
+ExecStart=/usr/bin/socat -d -d \
+    TCP-LISTEN:${VPN_PORT},fork,reuseaddr,bind=${PI_VPN_IP} \
+    TCP:${INTERNAL_IP}:${INTERNAL_PORT}
+Restart=always
+RestartSec=5
+User=root
+
+[Install]
+WantedBy=multi-user.target
