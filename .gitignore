@@ -1,0 +1,6 @@
+config.env
+*.log
+*.tmp
+*.bak
+.DS_Store
+/tmp/
