@@ -15,8 +15,8 @@ apt-get install -y -qq openvpn socat curl
 
 # ---------- OpenVPN-клиент ----------
 mkdir -p /etc/openvpn/client
-if [[ -f /tmp/morozovka-bridge-client/client.conf ]]; then
-    cp /tmp/morozovka-bridge-client/client.conf /etc/openvpn/client/client.conf
+if [[ -f /tmp/vuz-bridge-client/client.conf ]]; then
+    cp /tmp/vuz-bridge-client/client.conf /etc/openvpn/client/client.conf
     chmod 600 /etc/openvpn/client/client.conf
 fi
 
@@ -24,33 +24,34 @@ systemctl enable openvpn-client@client
 systemctl restart openvpn-client@client
 
 log "Ожидание tun0..."
-for i in {1..30}; do
+for _ in {1..30}; do
     ip -o link show tun0 &>/dev/null && break
     sleep 1
 done
 ip -o link show tun0 &>/dev/null || die "tun0 не поднялся. Проверьте /var/log/syslog."
 
 # ---------- ip_forward ----------
-echo "net.ipv4.ip_forward=1" > /etc/sysctl.d/99-morozovka-bridge.conf
-sysctl -p /etc/sysctl.d/99-morozovka-bridge.conf
+echo "net.ipv4.ip_forward=1" > /etc/sysctl.d/99-vuz-bridge.conf
+sysctl -p /etc/sysctl.d/99-vuz-bridge.conf
 
 # ---------- systemd unit для socat ----------
-mkdir -p /etc/morozovka-bridge/services
+mkdir -p /etc/vuz-bridge/services
 cp "$PROJECT_ROOT/templates/socat@.service" /etc/systemd/system/socat@.service
 systemctl daemon-reload
 
 # ---------- socat-сервисы ----------
 for entry in "${SERVICES[@]}"; do
+    # shellcheck disable=SC2034
     IFS='|' read -r name domain internal_ip internal_port vpn_port type external_port <<< "$entry"
     log "Сервис: $name ($internal_ip:$internal_port → VPN :$vpn_port)"
 
-    cat > "/etc/morozovka-bridge/services/${name}.env" <<EOF
+    cat > "/etc/vuz-bridge/services/${name}.env" <<EOF
 VPN_PORT=${vpn_port}
 PI_VPN_IP=${PI_VPN_IP}
 INTERNAL_IP=${internal_ip}
 INTERNAL_PORT=${internal_port}
 EOF
-    chmod 600 "/etc/morozovka-bridge/services/${name}.env"
+    chmod 600 "/etc/vuz-bridge/services/${name}.env"
 
     systemctl enable "socat@${name}"
     systemctl restart "socat@${name}"

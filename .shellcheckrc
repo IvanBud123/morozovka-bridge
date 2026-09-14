@@ -4,8 +4,22 @@
 #   Скрипты осознанно source-ят config.env и scripts/lib.sh,
 #   статический анализ их не видит.
 #
+# SC2016 — "expressions don't expand in single quotes".
+#   Ложное срабатывание на envsubst: одинарные кавычки нужны,
+#   чтобы envsubst увидел $VAR и подставил значение из окружения.
+#   Если использовать двойные кавычки — bash раскроет переменные
+#   раньше, чем envsubst их увидит.
+#
+# SC2034 — "appears unused".
+#   Паттерн `IFS='|' read -r a b c d e f g <<< "$entry"` осознанно
+#   читает все 7 полей сервиса, даже если конкретному скрипту
+#   нужны не все.
+#
+# SC2153 — "possible misspelling" — false positive.
+#   Переменные приходят из config.env через load_config,
+#   ShellCheck не следует за source.
+#
 # SC2154 — "variable is referenced but not assigned".
-#   Многие переменные приходят из config.env через окружение SSH.
-#   Проверка есть в самом скрипте через load_config.
+#   Та же причина, что SC2153.
 
-disable=SC1090,SC1091,SC2154
+disable=SC1090,SC1091,SC2016,SC2034,SC2153,SC2154
