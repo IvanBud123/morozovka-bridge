@@ -80,7 +80,6 @@ client-config-dir /etc/openvpn/server/ccd
 keepalive 10 120
 cipher AES-256-GCM
 data-ciphers AES-256-GCM:AES-128-GCM
-data-ciphers-fallback AES-256-GCM
 auth SHA256
 tls-version-min 1.2
 user nobody
