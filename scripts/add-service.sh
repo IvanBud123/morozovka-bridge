@@ -10,22 +10,23 @@ require_root
 load_config
 validate_services
 
-# Проверка SSH к внешнему серверу
-ssh_remote "echo ok" >/dev/null || die "SSH к ${EXTERNAL_HOST} не работает"
+# Проверка SSH (BatchMode — если ключ не работает, упадёт)
+ssh_remote "true" >/dev/null 2>&1 || die "SSH к ${EXTERNAL_HOST} не работает. Сначала запусти install.sh"
 ok "SSH-соединение с внешним сервером есть"
 
 # ---------- 1. socat на Малинке ----------
 log "Настраиваем socat-сервисы на Малинке"
 for entry in "${SERVICES[@]}"; do
+    # shellcheck disable=SC2034
     IFS='|' read -r name domain internal_ip internal_port vpn_port type external_port <<< "$entry"
 
-    cat > "/etc/morozovka-bridge/services/${name}.env" <<EOF
+    cat > "/etc/vuz-bridge/services/${name}.env" <<EOF
 VPN_PORT=${vpn_port}
 PI_VPN_IP=${PI_VPN_IP}
 INTERNAL_IP=${internal_ip}
 INTERNAL_PORT=${internal_port}
 EOF
-    chmod 600 "/etc/morozovka-bridge/services/${name}.env"
+    chmod 600 "/etc/vuz-bridge/services/${name}.env"
 
     systemctl enable "socat@${name}" >/dev/null 2>&1 || true
     systemctl restart "socat@${name}"
@@ -35,15 +36,18 @@ done
 # ---------- 2. Nginx на внешнем сервере ----------
 log "Настраиваем Nginx на внешнем сервере"
 
-# Чистим старые конфиги от morozovka-bridge, которые больше не нужны
+# Удаляем старые конфиги vuz-* и morozovka-*
+ssh_remote "rm -f /etc/nginx/sites-enabled/vuz-*.conf /etc/nginx/sites-available/vuz-*.conf /etc/nginx/stream.d/vuz-*.conf"
 ssh_remote "rm -f /etc/nginx/sites-enabled/morozovka-*.conf /etc/nginx/sites-available/morozovka-*.conf /etc/nginx/stream.d/morozovka-*.conf"
 
 for entry in "${SERVICES[@]}"; do
+    # shellcheck disable=SC2034
     IFS='|' read -r name domain internal_ip internal_port vpn_port type external_port <<< "$entry"
     fullname="morozovka-${name}"
 
     if [[ "$type" == "http" ]]; then
         [[ "$domain" == "_" ]] && domain="_"
+        # shellcheck disable=SC2016
         rendered=$(SERVICE_NAME="$name" DOMAIN="$domain" \
             PI_VPN_IP="$PI_VPN_IP" VPN_PORT="$vpn_port" \
             EXTERNAL_PORT="$external_port" \
@@ -52,6 +56,7 @@ for entry in "${SERVICES[@]}"; do
         echo "$rendered" | ssh_remote "cat > /etc/nginx/sites-available/${fullname}.conf && ln -sf /etc/nginx/sites-available/${fullname}.conf /etc/nginx/sites-enabled/${fullname}.conf"
         ok "  nginx http ${fullname}: ${external_port} → ${PI_VPN_IP}:${vpn_port}"
     else
+        # shellcheck disable=SC2016
         rendered=$(SERVICE_NAME="$name" \
             PI_VPN_IP="$PI_VPN_IP" VPN_PORT="$vpn_port" \
             EXTERNAL_PORT="$external_port" \
