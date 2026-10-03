@@ -57,8 +57,7 @@ SSH_COMMON_OPTS=(
 
 # Передаёт команду на удалённый сервер КАК ОДНУ СТРОКУ.
 # Никакого bash -c — иначе ssh склеит аргументы через пробел и
-# удалённый шелл получит мусор. Все скрипты, которые должны
-# исполняться под bash, вызываются как `bash /path/to/script.sh`.
+# удалённый шелл получит мусор.
 ssh_remote() {
     ssh "${SSH_COMMON_OPTS[@]}" -o BatchMode=yes -p "${EXTERNAL_SSH_PORT}" \
         "${EXTERNAL_SSH_USER}@${EXTERNAL_HOST}" \
