@@ -15,7 +15,6 @@ require_root() {
     [[ $EUID -eq 0 ]] || die "Запустите от root: sudo $0"
 }
 
-# Загрузка config.env из корня проекта
 load_config() {
     local root
     root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -25,7 +24,7 @@ load_config() {
     source "$cfg"
 
     local required=(
-        EXTERNAL_HOST EXTERNAL_SSH_USER EXTERNAL_SSH_PASSWORD
+        EXTERNAL_HOST EXTERNAL_SSH_USER
         VPN_PORT VPN_PROTO VPN_NETWORK VPN_NETMASK
         EXTERNAL_VPN_IP PI_VPN_IP PI_LAN_IP PI_LAN_INTERFACE
     )
@@ -35,7 +34,6 @@ load_config() {
     [[ ${#SERVICES[@]} -gt 0 ]] || die "Массив SERVICES пуст"
 }
 
-# Проверка каждой строки SERVICES
 validate_services() {
     local idx=0
     for entry in "${SERVICES[@]}"; do
@@ -48,24 +46,38 @@ validate_services() {
     done
 }
 
-# ---------- SSH на внешний сервер ----------
-SSH_OPTS=(
+# ---------- SSH ----------
+SSH_COMMON_OPTS=(
     -o StrictHostKeyChecking=accept-new
     -o UserKnownHostsFile=/root/.ssh/known_hosts
     -o LogLevel=ERROR
+    -o ConnectTimeout=10
+    -T
 )
 
+# Работает после установки ключа. Пароль не спрашивает — если ключа нет,
+# просто падает. Все команды идут через bash -c, потому что на внешнем
+# сервере у root может быть fish/zsh.
 ssh_remote() {
-    ssh "${SSH_OPTS[@]}" -p "${EXTERNAL_SSH_PORT}" \
-        "${EXTERNAL_SSH_USER}@${EXTERNAL_HOST}" "$@"
+    ssh "${SSH_COMMON_OPTS[@]}" -o BatchMode=yes -p "${EXTERNAL_SSH_PORT}" \
+        "${EXTERNAL_SSH_USER}@${EXTERNAL_HOST}" \
+        bash -c "$*"
+}
+
+# Используется ТОЛЬКО во время первичной установки ключа.
+# Пароль может спросить интерактивно.
+ssh_remote_password() {
+    ssh "${SSH_COMMON_OPTS[@]}" -p "${EXTERNAL_SSH_PORT}" \
+        "${EXTERNAL_SSH_USER}@${EXTERNAL_HOST}" \
+        bash -c "$*"
 }
 
 scp_to_remote() {
-    scp "${SSH_OPTS[@]}" -P "${EXTERNAL_SSH_PORT}" "$1" \
+    scp "${SSH_COMMON_OPTS[@]}" -o BatchMode=yes -P "${EXTERNAL_SSH_PORT}" "$1" \
         "${EXTERNAL_SSH_USER}@${EXTERNAL_HOST}:$2"
 }
 
 scp_from_remote() {
-    scp "${SSH_OPTS[@]}" -P "${EXTERNAL_SSH_PORT}" \
+    scp "${SSH_COMMON_OPTS[@]}" -o BatchMode=yes -P "${EXTERNAL_SSH_PORT}" \
         "${EXTERNAL_SSH_USER}@${EXTERNAL_HOST}:$1" "$2"
 }
