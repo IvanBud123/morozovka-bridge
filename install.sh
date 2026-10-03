@@ -77,7 +77,6 @@ scp_to_remote templates/remote-setup.sh /root/morozovka-bridge-remote-setup.sh
 
 log "Запуск remote-setup.sh на внешнем сервере (может занять несколько минут)"
 # remote-setup.sh сам себе загрузит env-файл в начале.
-# Явно вызываем bash, чтобы не зависеть от шелла root на удалённой стороне.
 ssh_remote "bash /root/morozovka-bridge-remote-setup.sh"
 ok "Внешний сервер настроен"
 
@@ -102,7 +101,7 @@ persist-key
 persist-tun
 remote-cert-tls server
 cipher AES-256-GCM
-data-ciphers AES-256-GCM:AES-128-GCM
+data-ciphers-fallback AES-256-GCM
 auth SHA256
 tls-version-min 1.2
 verb 3
