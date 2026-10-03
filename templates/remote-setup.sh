@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # ВНИМАНИЕ: выполняется на ВНЕШНЕМ сервере.
-# Переменные читаются из /root/morozovka-bridge-remote.env,
-# который передаётся install.sh.
+# Переменные читаются из /root/morozovka-bridge-remote.env.
 set -euo pipefail
 
 # ---------- Загрузка переменных ----------
@@ -15,7 +14,6 @@ set -a
 source "$REMOTE_ENV"
 set +a
 
-# Проверка, что всё пришло
 for v in VPN_PORT VPN_PROTO VPN_NETWORK VPN_NETMASK EXTERNAL_VPN_IP PI_VPN_IP; do
     if [[ -z "${!v:-}" ]]; then
         echo "[remote] FATAL: переменная $v не задана в $REMOTE_ENV" >&2
@@ -82,6 +80,7 @@ client-config-dir /etc/openvpn/server/ccd
 keepalive 10 120
 cipher AES-256-GCM
 data-ciphers AES-256-GCM:AES-128-GCM
+data-ciphers-fallback AES-256-GCM
 auth SHA256
 tls-version-min 1.2
 user nobody
