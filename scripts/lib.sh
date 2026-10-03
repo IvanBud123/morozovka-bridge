@@ -55,21 +55,21 @@ SSH_COMMON_OPTS=(
     -T
 )
 
-# Работает после установки ключа. Пароль не спрашивает — если ключа нет,
-# просто падает. Все команды идут через bash -c, потому что на внешнем
-# сервере у root может быть fish/zsh.
+# Передаёт команду на удалённый сервер КАК ОДНУ СТРОКУ.
+# Никакого bash -c — иначе ssh склеит аргументы через пробел и
+# удалённый шелл получит мусор. Все скрипты, которые должны
+# исполняться под bash, вызываются как `bash /path/to/script.sh`.
 ssh_remote() {
     ssh "${SSH_COMMON_OPTS[@]}" -o BatchMode=yes -p "${EXTERNAL_SSH_PORT}" \
         "${EXTERNAL_SSH_USER}@${EXTERNAL_HOST}" \
-        bash -c "$*"
+        "$*"
 }
 
-# Используется ТОЛЬКО во время первичной установки ключа.
-# Пароль может спросить интерактивно.
+# То же, но без BatchMode — для первичной установки ключа.
 ssh_remote_password() {
     ssh "${SSH_COMMON_OPTS[@]}" -p "${EXTERNAL_SSH_PORT}" \
         "${EXTERNAL_SSH_USER}@${EXTERNAL_HOST}" \
-        bash -c "$*"
+        "$*"
 }
 
 scp_to_remote() {
