@@ -76,7 +76,6 @@ scp_to_remote "$REMOTE_ENV" /root/morozovka-bridge-remote.env
 scp_to_remote templates/remote-setup.sh /root/morozovka-bridge-remote-setup.sh
 
 log "Запуск remote-setup.sh на внешнем сервере (может занять несколько минут)"
-# remote-setup.sh сам себе загрузит env-файл в начале.
 ssh_remote "bash /root/morozovka-bridge-remote-setup.sh"
 ok "Внешний сервер настроен"
 
@@ -89,7 +88,7 @@ scp_from_remote "/root/morozovka-bridge-client/client.crt" /tmp/morozovka-bridge
 scp_from_remote "/root/morozovka-bridge-client/client.key" /tmp/morozovka-bridge-client/
 scp_from_remote "/root/morozovka-bridge-client/ta.key"     /tmp/morozovka-bridge-client/
 
-log "Рендерим client.conf"
+log "Рендерим client.conf (совместимо с OpenVPN 2.4+)"
 cat > /tmp/morozovka-bridge-client/client.conf <<EOF
 client
 dev tun
@@ -101,9 +100,7 @@ persist-key
 persist-tun
 remote-cert-tls server
 cipher AES-256-GCM
-data-ciphers-fallback AES-256-GCM
 auth SHA256
-tls-version-min 1.2
 verb 3
 
 <ca>
