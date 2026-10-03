@@ -25,14 +25,12 @@ if [[ ! -f /root/.ssh/id_ed25519 ]]; then
     ssh-keygen -t ed25519 -N "" -f /root/.ssh/id_ed25519 -C "morozovka-bridge@$(hostname)"
 fi
 
-# Проверяем, работает ли уже ключ (молча, без пароля)
 if ssh_remote "true" >/dev/null 2>&1; then
     ok "SSH-ключ уже работает"
 else
     log "SSH-ключ не установлен. Копируем публичный ключ на ${EXTERNAL_HOST}"
 
     if [[ -n "${EXTERNAL_SSH_PASSWORD:-}" ]]; then
-        # Неинтерактивный путь: берём пароль из config.env
         if ! command -v sshpass >/dev/null 2>&1; then
             log "Установка sshpass"
             apt-get install -y -qq sshpass >/dev/null
@@ -48,8 +46,7 @@ else
         fi
         unset SSHPASS
     else
-        # Интерактивный путь: спросит пароль один раз
-        warn "EXTERNAL_SSH_PASSWORD не задан в config.env — введи пароль вручную (один раз)"
+        warn "EXTERNAL_SSH_PASSWORD не задан — введи пароль вручную (один раз)"
         ssh-copy-id \
             -o StrictHostKeyChecking=accept-new \
             -o UserKnownHostsFile=/root/.ssh/known_hosts \
@@ -58,9 +55,8 @@ else
             || die "ssh-copy-id не сработал"
     fi
 
-    # Проверяем, что ключ теперь работает
     ssh_remote "true" >/dev/null 2>&1 \
-        || die "Ключ скопирован, но SSH всё ещё требует пароль. Проверь настройки sshd на ${EXTERNAL_HOST}."
+        || die "Ключ скопирован, но SSH всё ещё требует пароль. Проверь sshd на ${EXTERNAL_HOST}."
     ok "SSH-ключ установлен"
 fi
 
@@ -80,7 +76,9 @@ scp_to_remote "$REMOTE_ENV" /root/morozovka-bridge-remote.env
 scp_to_remote templates/remote-setup.sh /root/morozovka-bridge-remote-setup.sh
 
 log "Запуск remote-setup.sh на внешнем сервере (может занять несколько минут)"
-ssh_remote "set -a; source /root/morozovka-bridge-remote.env; set +a; bash /root/morozovka-bridge-remote-setup.sh"
+# remote-setup.sh сам себе загрузит env-файл в начале.
+# Явно вызываем bash, чтобы не зависеть от шелла root на удалённой стороне.
+ssh_remote "bash /root/morozovka-bridge-remote-setup.sh"
 ok "Внешний сервер настроен"
 
 # ---------- 3. Забираем клиентские файлы OpenVPN ----------
