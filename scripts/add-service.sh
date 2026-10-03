@@ -10,23 +10,23 @@ require_root
 load_config
 validate_services
 
-# Проверка SSH (BatchMode — если ключ не работает, упадёт)
 ssh_remote "true" >/dev/null 2>&1 || die "SSH к ${EXTERNAL_HOST} не работает. Сначала запусти install.sh"
 ok "SSH-соединение с внешним сервером есть"
 
 # ---------- 1. socat на Малинке ----------
 log "Настраиваем socat-сервисы на Малинке"
+mkdir -p /etc/morozovka-bridge/services
 for entry in "${SERVICES[@]}"; do
     # shellcheck disable=SC2034
     IFS='|' read -r name domain internal_ip internal_port vpn_port type external_port <<< "$entry"
 
-    cat > "/etc/vuz-bridge/services/${name}.env" <<EOF
+    cat > "/etc/morozovka-bridge/services/${name}.env" <<EOF
 VPN_PORT=${vpn_port}
 PI_VPN_IP=${PI_VPN_IP}
 INTERNAL_IP=${internal_ip}
 INTERNAL_PORT=${internal_port}
 EOF
-    chmod 600 "/etc/vuz-bridge/services/${name}.env"
+    chmod 600 "/etc/morozovka-bridge/services/${name}.env"
 
     systemctl enable "socat@${name}" >/dev/null 2>&1 || true
     systemctl restart "socat@${name}"
@@ -36,7 +36,7 @@ done
 # ---------- 2. Nginx на внешнем сервере ----------
 log "Настраиваем Nginx на внешнем сервере"
 
-# Удаляем старые конфиги vuz-* и morozovka-*
+# Чистим старые конфиги (и vuz-*, и morozovka-*) — на случай, если оставались с прошлых версий
 ssh_remote "rm -f /etc/nginx/sites-enabled/vuz-*.conf /etc/nginx/sites-available/vuz-*.conf /etc/nginx/stream.d/vuz-*.conf"
 ssh_remote "rm -f /etc/nginx/sites-enabled/morozovka-*.conf /etc/nginx/sites-available/morozovka-*.conf /etc/nginx/stream.d/morozovka-*.conf"
 
