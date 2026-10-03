@@ -18,7 +18,7 @@ CLIENT_SRC="/tmp/morozovka-bridge-client/client.conf"
 CLIENT_DST="/etc/openvpn/client/client.conf"
 
 if [[ ! -f "$CLIENT_SRC" ]]; then
-    die "Не найден $CLIENT_SRC — install.sh должен был его создать."
+    die "Не найден $CLIENT_SRC — install.sh должен был его создать. Прервано."
 fi
 
 mkdir -p /etc/openvpn/client
@@ -40,7 +40,7 @@ echo "net.ipv4.ip_forward=1" > /etc/sysctl.d/99-morozovka-bridge.conf
 sysctl -p /etc/sysctl.d/99-morozovka-bridge.conf
 
 # ---------- systemd unit для socat ----------
-mkdir -p /etc/morozovka-bridge/services
+mkdir -p /etc/vuz-bridge/services
 cp "$PROJECT_ROOT/templates/socat@.service" /etc/systemd/system/socat@.service
 systemctl daemon-reload
 
@@ -50,13 +50,13 @@ for entry in "${SERVICES[@]}"; do
     IFS='|' read -r name domain internal_ip internal_port vpn_port type external_port <<< "$entry"
     log "Сервис: $name ($internal_ip:$internal_port → VPN :$vpn_port)"
 
-    cat > "/etc/morozovka-bridge/services/${name}.env" <<EOF
+    cat > "/etc/vuz-bridge/services/${name}.env" <<EOF
 VPN_PORT=${vpn_port}
 PI_VPN_IP=${PI_VPN_IP}
 INTERNAL_IP=${internal_ip}
 INTERNAL_PORT=${internal_port}
 EOF
-    chmod 600 "/etc/morozovka-bridge/services/${name}.env"
+    chmod 600 "/etc/vuz-bridge/services/${name}.env"
 
     systemctl enable "socat@${name}"
     systemctl restart "socat@${name}"
