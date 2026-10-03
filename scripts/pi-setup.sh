@@ -14,21 +14,26 @@ apt-get update -qq
 apt-get install -y -qq openvpn socat curl
 
 # ---------- OpenVPN-клиент ----------
-mkdir -p /etc/openvpn/client
-if [[ -f /tmp/morozovka-bridge-client/client.conf ]]; then
-    cp /tmp/morozovka-bridge-client/client.conf /etc/openvpn/client/client.conf
-    chmod 600 /etc/openvpn/client/client.conf
+CLIENT_SRC="/tmp/morozovka-bridge-client/client.conf"
+CLIENT_DST="/etc/openvpn/client/client.conf"
+
+if [[ ! -f "$CLIENT_SRC" ]]; then
+    die "Не найден $CLIENT_SRC — install.sh должен был его создать."
 fi
+
+mkdir -p /etc/openvpn/client
+cp "$CLIENT_SRC" "$CLIENT_DST"
+chmod 600 "$CLIENT_DST"
 
 systemctl enable openvpn-client@client
 systemctl restart openvpn-client@client
 
 log "Ожидание tun0..."
-for i in {1..30}; do
+for _ in {1..30}; do
     ip -o link show tun0 &>/dev/null && break
     sleep 1
 done
-ip -o link show tun0 &>/dev/null || die "tun0 не поднялся. Проверьте /var/log/syslog."
+ip -o link show tun0 &>/dev/null || die "tun0 не поднялся. Проверьте: journalctl -u openvpn-client@client -n 50"
 
 # ---------- ip_forward ----------
 echo "net.ipv4.ip_forward=1" > /etc/sysctl.d/99-morozovka-bridge.conf
@@ -41,6 +46,7 @@ systemctl daemon-reload
 
 # ---------- socat-сервисы ----------
 for entry in "${SERVICES[@]}"; do
+    # shellcheck disable=SC2034
     IFS='|' read -r name domain internal_ip internal_port vpn_port type external_port <<< "$entry"
     log "Сервис: $name ($internal_ip:$internal_port → VPN :$vpn_port)"
 
