@@ -25,20 +25,44 @@ if [[ ! -f /root/.ssh/id_ed25519 ]]; then
     ssh-keygen -t ed25519 -N "" -f /root/.ssh/id_ed25519 -C "morozovka-bridge@$(hostname)"
 fi
 
-# Проверяем, работает ли уже ключ
-if ! ssh_remote "echo ok" >/dev/null 2>&1; then
-    log "Копирование SSH-ключа на ${EXTERNAL_HOST} (по паролю)"
-    apt-get install -y -qq sshpass >/dev/null
-    export SSHPASS="${EXTERNAL_SSH_PASSWORD}"
-    sshpass -e ssh-copy-id \
-        -o StrictHostKeyChecking=accept-new \
-        -o UserKnownHostsFile=/root/.ssh/known_hosts \
-        -p "${EXTERNAL_SSH_PORT}" \
-        "${EXTERNAL_SSH_USER}@${EXTERNAL_HOST}" 2>/dev/null || true
-    unset SSHPASS
-    ssh_remote "echo ok" >/dev/null || die "Не удалось установить SSH-ключ"
+# Проверяем, работает ли уже ключ (молча, без пароля)
+if ssh_remote "true" >/dev/null 2>&1; then
+    ok "SSH-ключ уже работает"
+else
+    log "SSH-ключ не установлен. Копируем публичный ключ на ${EXTERNAL_HOST}"
+
+    if [[ -n "${EXTERNAL_SSH_PASSWORD:-}" ]]; then
+        # Неинтерактивный путь: берём пароль из config.env
+        if ! command -v sshpass >/dev/null 2>&1; then
+            log "Установка sshpass"
+            apt-get install -y -qq sshpass >/dev/null
+        fi
+        export SSHPASS="${EXTERNAL_SSH_PASSWORD}"
+        if ! sshpass -e ssh-copy-id \
+                -o StrictHostKeyChecking=accept-new \
+                -o UserKnownHostsFile=/root/.ssh/known_hosts \
+                -p "${EXTERNAL_SSH_PORT}" \
+                "${EXTERNAL_SSH_USER}@${EXTERNAL_HOST}" >/dev/null 2>&1; then
+            unset SSHPASS
+            die "ssh-copy-id не сработал. Проверь EXTERNAL_SSH_USER и EXTERNAL_SSH_PASSWORD в config.env"
+        fi
+        unset SSHPASS
+    else
+        # Интерактивный путь: спросит пароль один раз
+        warn "EXTERNAL_SSH_PASSWORD не задан в config.env — введи пароль вручную (один раз)"
+        ssh-copy-id \
+            -o StrictHostKeyChecking=accept-new \
+            -o UserKnownHostsFile=/root/.ssh/known_hosts \
+            -p "${EXTERNAL_SSH_PORT}" \
+            "${EXTERNAL_SSH_USER}@${EXTERNAL_HOST}" \
+            || die "ssh-copy-id не сработал"
+    fi
+
+    # Проверяем, что ключ теперь работает
+    ssh_remote "true" >/dev/null 2>&1 \
+        || die "Ключ скопирован, но SSH всё ещё требует пароль. Проверь настройки sshd на ${EXTERNAL_HOST}."
+    ok "SSH-ключ установлен"
 fi
-ok "SSH-ключ работает"
 
 # ---------- 2. Настройка внешнего сервера ----------
 log "Готовим env-файл для внешнего сервера"
