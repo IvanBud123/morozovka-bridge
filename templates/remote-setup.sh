@@ -1,7 +1,27 @@
 #!/usr/bin/env bash
 # ВНИМАНИЕ: выполняется на ВНЕШНЕМ сервере.
-# Переменные: VPN_PORT, VPN_PROTO, VPN_NETWORK, VPN_NETMASK, PI_VPN_IP, EXTERNAL_VPN_IP
+# Переменные читаются из /root/morozovka-bridge-remote.env,
+# который передаётся install.sh.
 set -euo pipefail
+
+# ---------- Загрузка переменных ----------
+REMOTE_ENV="/root/morozovka-bridge-remote.env"
+if [[ ! -f "$REMOTE_ENV" ]]; then
+    echo "[remote] FATAL: $REMOTE_ENV не найден" >&2
+    exit 1
+fi
+set -a
+# shellcheck disable=SC1090
+source "$REMOTE_ENV"
+set +a
+
+# Проверка, что всё пришло
+for v in VPN_PORT VPN_PROTO VPN_NETWORK VPN_NETMASK EXTERNAL_VPN_IP PI_VPN_IP; do
+    if [[ -z "${!v:-}" ]]; then
+        echo "[remote] FATAL: переменная $v не задана в $REMOTE_ENV" >&2
+        exit 1
+    fi
+done
 
 log() { echo "[remote] $*"; }
 
@@ -93,7 +113,6 @@ netfilter-persistent save
 mkdir -p /etc/nginx/stream.d
 rm -f /etc/nginx/sites-enabled/default
 
-# Включаем stream-блок (если ещё нет)
 if ! grep -q "stream.d" /etc/nginx/nginx.conf; then
     cat >> /etc/nginx/nginx.conf <<'NGINXEOF'
 
