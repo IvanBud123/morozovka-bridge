@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>morozovka-bridge — управление мостами</title>
+<style>
+    * { box-sizing: border-box; }
+    body {
+        margin: 0; min-height: 100vh; padding: 40px 24px 80px;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        background: radial-gradient(circle at 20% 0%, #1e2a4a 0%, #0d1117 60%);
+        color: #e6edf3; font-size: 15px; line-height: 1.6;
+    }
+    .container { max-width: 1200px; margin: 0 auto; }
+    h1 {
+        font-size: 1.8rem; font-weight: 700; margin: 0 0 8px;
+        background: linear-gradient(90deg, #58a6ff, #a371f7, #f778ba);
+        -webkit-background-clip: text; background-clip: text; color: transparent;
+        letter-spacing: -0.5px;
+    }
+    .subtitle { color: #8b949e; margin: 0 0 40px; }
+
+    /* ─── кнопки ─── */
+    button {
+        font-family: inherit; font-size: 0.85rem; font-weight: 600;
+        padding: 8px 16px; border-radius: 8px; border: 1px solid #30363d;
+        background: #21262d; color: #e6edf3; cursor: pointer;
+        transition: all .15s;
+    }
+    button:hover { background: #30363d; border-color: #58a6ff; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    button.primary { background: #238636; border-color: #2ea043; color: #fff; }
+    button.primary:hover { background: #2ea043; }
+    button.danger { background: #4a1414; border-color: #f85149; color: #ff7b72; }
+    button.danger:hover { background: #5c1a1a; }
+    button.small { padding: 5px 10px; font-size: 0.78rem; }
+
+    /* ─── тулбар ─── */
+    .toolbar {
+        display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+        margin-bottom: 20px;
+    }
+    .toolbar .spacer { flex: 1; }
+    .toolbar .info { color: #8b949e; font-size: 0.85rem; }
+
+    /* ─── таблица ─── */
+    .card {
+        background: rgba(22, 27, 34, 0.6); border: 1px solid #30363d;
+        border-radius: 12px; overflow: hidden;
+        backdrop-filter: blur(10px); margin-bottom: 24px;
+    }
+    table { width: 100%; border-collapse: collapse; }
+    th {
+        text-align: left; padding: 12px 16px;
+        background: rgba(13, 17, 23, 0.7); color: #8b949e;
+        font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.8px;
+        border-bottom: 1px solid #30363d; font-weight: 600;
+    }
+    td {
+        padding: 14px 16px; border-bottom: 1px solid rgba(48,54,61,0.5);
+        vertical-align: middle;
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(88,166,255,0.04); }
+
+    td code, .mono {
+        font-family: ui-monospace, "SF Mono", Consolas, monospace;
+        background: rgba(88,166,255,0.1); color: #79c0ff;
+        padding: 2px 7px; border-radius: 4px; font-size: 0.85em;
+    }
+
+    .status-pill {
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 3px 10px; border-radius: 999px;
+        font-size: 0.72rem; font-weight: 600;
+        text-transform: uppercase; letter-spacing: 0.5px;
+    }
+    .status-pill::before {
+        content: ''; width: 7px; height: 7px; border-radius: 50%;
+    }
+    .status-pill.ok { background: rgba(63,185,80,0.15); color: #3fb950; }
+    .status-pill.ok::before { background: #3fb950; box-shadow: 0 0 8px #3fb950; }
+    .status-pill.warn { background: rgba(210,153,34,0.15); color: #d29922; }
+    .status-pill.warn::before { background: #d29922; box-shadow: 0 0 8px #d29922; }
+    .status-pill.fail { background: rgba(248,81,73,0.15); color: #f85149; }
+    .status-pill.fail::before { background: #f85149; box-shadow: 0 0 8px #f85149; }
+
+    .actions { display: flex; gap: 6px; justify-content: flex-end; }
+
+    /* ─── форма ─── */
+    .form-grid {
+        display: grid; grid-template-columns: repeat(5, 1fr) auto;
+        gap: 12px; align-items: end; padding: 20px;
+    }
+    .form-grid label {
+        display: flex; flex-direction: column; gap: 6px;
+        font-size: 0.75rem; color: #8b949e;
+        text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600;
+    }
+    .form-grid input {
+        font-family: ui-monospace, "SF Mono", Consolas, monospace;
+        font-size: 0.88rem; padding: 9px 12px;
+        background: #0d1117; border: 1px solid #30363d; border-radius: 8px;
+        color: #e6edf3; outline: none; transition: border-color .15s;
+    }
+    .form-grid input:focus { border-color: #58a6ff; }
+
+    /* ─── сообщения ─── */
+    .flash {
+        padding: 12px 16px; border-radius: 8px; margin-bottom: 16px;
+        font-size: 0.9rem; display: none;
+    }
+    .flash.ok { background: rgba(63,185,80,0.12); border: 1px solid #3fb950; color: #3fb950; }
+    .flash.err { background: rgba(248,81,73,0.12); border: 1px solid #f85149; color: #f85149; }
+
+    /* ─── модалка теста ─── */
+    .modal-bg {
+        position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+        display: none; align-items: center; justify-content: center; z-index: 100;
+    }
+    .modal-bg.open { display: flex; }
+    .modal {
+        background: #161b22; border: 1px solid #30363d; border-radius: 12px;
+        max-width: 520px; width: 90%; padding: 24px;
+    }
+    .modal h3 { margin: 0 0 16px; }
+    .modal .check {
+        display: flex; align-items: flex-start; gap: 10px;
+        padding: 10px 0; border-bottom: 1px solid #30363d;
+    }
+    .modal .check:last-child { border-bottom: none; }
+    .modal .check .flag { font-size: 1.1rem; }
+    .modal .check .body { flex: 1; }
+    .modal .check .name { font-weight: 600; }
+    .modal .check .detail { color: #8b949e; font-size: 0.85rem; }
+
+    footer {
+        margin-top: 60px; padding-top: 24px; border-top: 1px solid #30363d;
+        color: #484f58; font-size: 0.82rem; text-align: center;
+    }
+    code { background: rgba(110,118,129,0.15); padding: 2px 6px;
+           border-radius: 4px; color: #8b949e;
+           font-family: ui-monospace, monospace; }
+</style>
+</head>
+<body>
+<div class="container">
+
+    <h1>morozovka-bridge</h1>
+    <p class="subtitle">Управление проброшенными сервисами · внешний сервер
+        <code>{{ external_host }}</code></p>
+
+    <div id="flash-ok" class="flash ok"></div>
+    <div id="flash-err" class="flash err"></div>
+
+    <!-- Тулбар -->
+    <div class="toolbar">
+	<button class="primary" onclick="loadState()">↻ Обновить</button>
+	<button onclick="testAll()">✓ Проверить все</button>
+	<a href="/metrics" class="btn-link" style="margin-left:auto;color:#58a6ff;text-decoration:none;padding:8px 16px;border:1px solid #58a6ff;border-radius:8px;font-weight:600;font-size:0.85rem;">📊 Мониторинг</a>
+        <span class="spacer"></span>
+        <span class="info" id="info">Загрузка…</span>
+    </div>
+
+    <!-- Таблица мостов -->
+    <div class="card">
+        <table>
+            <thead>
+                <tr>
+                    <th>Статус</th>
+                    <th>Имя</th>
+                    <th>Destination</th>
+                    <th>VPN-порт</th>
+                    <th>Внешний порт</th>
+                    <th style="text-align:right;">Действия</th>
+                </tr>
+            </thead>
+            <tbody id="bridges"></tbody>
+        </table>
+    </div>
+
+    <!-- Форма добавления -->
+    <h2 style="font-size:1.2rem;margin:32px 0 8px;">Добавить мост</h2>
+    <div class="card">
+        <div class="form-grid">
+            <label>Имя
+                <input id="f-name" placeholder="gitea">
+            </label>
+            <label>Destination IP
+                <input id="f-dest-ip" placeholder="192.168.50.3">
+            </label>
+            <label>Dest порт
+                <input id="f-dest-port" type="number" placeholder="3000">
+            </label>
+            <label>VPN-порт
+                <input id="f-vpn-port" type="number" placeholder="3000">
+            </label>
+            <label>Внешний порт
+                <input id="f-ext-port" type="number" placeholder="3000">
+            </label>
+            <button class="primary" onclick="addBridge()">+ Добавить</button>
+        </div>
+    </div>
+
+    <footer>
+        bridge-webui · morozovka-bridge · 2026
+    </footer>
+</div>
+
+<!-- Модалка теста -->
+<div class="modal-bg" id="modal-bg">
+    <div class="modal">
+        <h3 id="modal-title">Проверка</h3>
+        <div id="modal-body"></div>
+        <div style="margin-top:20px;text-align:right;">
+            <button onclick="closeModal()">Закрыть</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const statusLabels = {
+        ok:           ['ok',   'OK'],
+        warn:         ['warn', 'ОСТАНОВЛЕН'],
+        'missing-ext':['fail', 'НЕТ ВНЕШНЕГО'],
+        'missing-pi': ['fail', 'НЕТ НА МАЛИНКЕ'],
+    };
+
+    function flash(type, msg) {
+        const el = document.getElementById(type === 'ok' ? 'flash-ok' : 'flash-err');
+        el.textContent = msg;
+        el.style.display = 'block';
+        setTimeout(() => el.style.display = 'none', 5000);
+    }
+
+    async function loadState() {
+        try {
+            const r = await fetch('/api/state');
+            const d = await r.json();
+            if (!d.ok) {
+                flash('err', d.error || 'Ошибка загрузки');
+                return;
+            }
+            renderTable(d.bridges);
+            document.getElementById('info').textContent =
+                `Мостов: ${d.bridges.length} · внешний: ${d.external_host}`;
+        } catch (e) {
+            flash('err', 'Ошибка: ' + e);
+        }
+    }
+
+    function renderTable(bridges) {
+        const tbody = document.getElementById('bridges');
+        if (!bridges.length) {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#8b949e;padding:30px;">Мостов пока нет</td></tr>';
+            return;
+        }
+        tbody.innerHTML = bridges.map(b => {
+            const [cls, label] = statusLabels[b.status] || ['warn', '?'];
+            const dest = b.dest_ip === '—' ? '—' : `${b.dest_ip}:${b.dest_port}`;
+            const canRemove = b.pi_exists;
+            return `
+                <tr>
+                    <td><span class="status-pill ${cls}">${label}</span></td>
+                    <td><strong>${b.name}</strong></td>
+                    <td><span class="mono">${dest}</span></td>
+                    <td><span class="mono">${b.vpn_port}</span></td>
+                    <td><span class="mono">${b.external_port}</span></td>
+                    <td>
+                        <div class="actions">
+                            <button class="small" onclick="testBridge('${b.name}')">Тест</button>
+                            ${canRemove ? `<button class="small danger" onclick="removeBridge('${b.name}')">Удалить</button>` : ''}
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    async function addBridge() {
+        const name          = document.getElementById('f-name').value.trim();
+        const dest_ip       = document.getElementById('f-dest-ip').value.trim();
+        const dest_port     = parseInt(document.getElementById('f-dest-port').value);
+        const vpn_port      = parseInt(document.getElementById('f-vpn-port').value);
+        const external_port = parseInt(document.getElementById('f-ext-port').value);
+
+        if (!name || !dest_ip || !dest_port || !vpn_port || !external_port) {
+            flash('err', 'Заполни все поля');
+            return;
+        }
+
+        try {
+            const r = await fetch('/api/add', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({name, dest_ip, dest_port, vpn_port, external_port}),
+            });
+            const d = await r.json();
+            if (!d.ok) {
+                flash('err', d.error || 'Не удалось добавить');
+                return;
+            }
+            flash('ok', d.message);
+            ['f-name','f-dest-ip','f-dest-port','f-vpn-port','f-ext-port'].forEach(id => {
+                document.getElementById(id).value = '';
+            });
+            loadState();
+        } catch (e) {
+            flash('err', 'Ошибка: ' + e);
+        }
+    }
+
+    async function removeBridge(name) {
+        if (!confirm(`Удалить мост "${name}"?`)) return;
+        try {
+            const r = await fetch('/api/remove', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({name}),
+            });
+            const d = await r.json();
+            if (!d.ok) {
+                flash('err', d.error || 'Не удалось удалить');
+                return;
+            }
+            flash('ok', d.message);
+            loadState();
+        } catch (e) {
+            flash('err', 'Ошибка: ' + e);
+        }
+    }
+
+    async function testBridge(name) {
+        document.getElementById('modal-title').textContent = `Проверка: ${name}`;
+        document.getElementById('modal-body').innerHTML = '<p>Идёт проверка…</p>';
+        document.getElementById('modal-bg').classList.add('open');
+        try {
+            const r = await fetch(`/api/test/${name}`, {method: 'POST'});
+            const d = await r.json();
+            if (!d.checks) {
+                document.getElementById('modal-body').innerHTML =
+                    `<p style="color:#f85149;">${d.error || 'Ошибка'}</p>`;
+                return;
+            }
+            document.getElementById('modal-body').innerHTML = d.checks.map(c => `
+                <div class="check">
+                    <span class="flag">${c.ok ? '🟢' : '🔴'}</span>
+                    <div class="body">
+                        <div class="name">${c.name}</div>
+                        <div class="detail">${c.detail}</div>
+                    </div>
+                </div>
+            `).join('');
+        } catch (e) {
+            document.getElementById('modal-body').innerHTML =
+                `<p style="color:#f85149;">Ошибка: ${e}</p>`;
+        }
+    }
+
+    function closeModal() {
+        document.getElementById('modal-bg').classList.remove('open');
+    }
+
+    document.getElementById('modal-bg').addEventListener('click', e => {
+        if (e.target.id === 'modal-bg') closeModal();
+    });
+
+    async function testAll() {
+        const r = await fetch('/api/state');
+        const d = await r.json();
+        if (!d.ok) return;
+        for (const b of d.bridges) {
+            await testBridge(b.name);
+        }
+    }
+
+    loadState();
+    setInterval(loadState, 30000);
+</script>
+</body>
+</html>

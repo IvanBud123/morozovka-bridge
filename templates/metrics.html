@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Мониторинг · morozovka-bridge</title>
+<style>
+    * { box-sizing: border-box; }
+    body {
+        margin: 0; min-height: 100vh; padding: 32px 24px 80px;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        background: radial-gradient(circle at 20% 0%, #1e2a4a 0%, #0d1117 60%);
+        color: #e6edf3; font-size: 14px; line-height: 1.5;
+    }
+    .container { max-width: 1500px; margin: 0 auto; }
+
+    header {
+        display: flex; align-items: center; gap: 20px;
+        margin-bottom: 32px; flex-wrap: wrap;
+    }
+    h1 {
+        font-size: 1.6rem; font-weight: 700; margin: 0;
+        background: linear-gradient(90deg, #58a6ff, #a371f7, #f778ba);
+        -webkit-background-clip: text; background-clip: text; color: transparent;
+    }
+    .back-link {
+        color: #8b949e; text-decoration: none; font-size: 0.9rem;
+        padding: 6px 12px; border: 1px solid #30363d; border-radius: 8px;
+        transition: all .15s;
+    }
+    .back-link:hover { color: #58a6ff; border-color: #58a6ff; }
+    .spacer { flex: 1; }
+    .status-info { color: #8b949e; font-size: 0.85rem; font-family: ui-monospace, monospace; }
+    .dot {
+        display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+        background: #3fb950; box-shadow: 0 0 8px #3fb950;
+        margin-right: 6px; vertical-align: middle;
+        animation: pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .35 } }
+
+    /* Сводка */
+    .summary {
+        display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 14px; margin-bottom: 28px;
+    }
+    .sum-card {
+        padding: 16px 18px; border-radius: 12px;
+        background: rgba(22, 27, 34, 0.6); border: 1px solid #30363d;
+    }
+    .sum-card .label {
+        font-size: 0.7rem; color: #8b949e; text-transform: uppercase;
+        letter-spacing: 0.8px; font-weight: 600; margin-bottom: 6px;
+    }
+    .sum-card .value {
+        font-size: 1.5rem; font-weight: 700;
+        font-family: ui-monospace, monospace;
+    }
+    .sum-card .value.good { color: #3fb950; }
+    .sum-card .value.warn { color: #d29922; }
+    .sum-card .value.bad  { color: #f85149; }
+
+    /* Сетка хостов */
+    .hosts {
+        display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+        gap: 16px;
+    }
+
+    .host {
+        background: rgba(22, 27, 34, 0.6);
+        border: 1px solid #30363d; border-radius: 14px;
+        padding: 18px 20px;
+        backdrop-filter: blur(8px);
+        transition: border-color .2s, box-shadow .2s;
+    }
+    .host:hover { border-color: #58a6ff; box-shadow: 0 8px 28px rgba(88,166,255,0.12); }
+    .host.offline { opacity: 0.55; }
+    .host.offline:hover { border-color: #f85149; box-shadow: 0 8px 28px rgba(248,81,73,0.12); }
+
+    .host-head {
+        display: flex; align-items: flex-start;
+        gap: 12px; margin-bottom: 14px;
+    }
+    .host-head .name {
+        font-weight: 700; font-size: 1.05rem;
+        margin: 0 0 2px; letter-spacing: -0.3px;
+    }
+    .host-head .meta {
+        font-size: 0.78rem; color: #8b949e;
+        font-family: ui-monospace, monospace;
+    }
+    .host-head .badge {
+        margin-left: auto; padding: 3px 10px; border-radius: 999px;
+        font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.5px;
+        font-weight: 700;
+    }
+    .badge.on  { background: rgba(63,185,80,0.15); color: #3fb950; }
+    .badge.off { background: rgba(248,81,73,0.15); color: #f85149; }
+
+    /* Полоски прогресса */
+    .bar-row {
+        display: flex; align-items: center; gap: 10px;
+        margin-bottom: 8px; font-size: 0.82rem;
+    }
+    .bar-row .bar-label {
+        width: 44px; color: #8b949e; font-size: 0.72rem;
+        text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600;
+    }
+    .bar-row .bar-track {
+        flex: 1; height: 8px; border-radius: 4px;
+        background: #0d1117; overflow: hidden;
+        border: 1px solid #21262d;
+    }
+    .bar-row .bar-fill {
+        height: 100%; transition: width .4s ease, background .3s;
+        border-radius: 4px;
+    }
+    .bar-row .bar-value {
+        width: 92px; text-align: right;
+        font-family: ui-monospace, monospace; font-size: 0.76rem;
+        color: #c9d1d9;
+    }
+
+    .fill-green  { background: linear-gradient(90deg, #238636, #3fb950); }
+    .fill-yellow { background: linear-gradient(90deg, #9e6a03, #d29922); }
+    .fill-red    { background: linear-gradient(90deg, #a40e26, #f85149); }
+
+    /* Метаданные */
+    .host-meta {
+        display: grid; grid-template-columns: 1fr 1fr;
+        gap: 6px 16px; margin-top: 12px; margin-bottom: 12px;
+        font-size: 0.78rem;
+    }
+    .host-meta .k { color: #8b949e; }
+    .host-meta .v {
+        font-family: ui-monospace, monospace;
+        color: #c9d1d9; text-align: right;
+    }
+
+    /* Спарклайн */
+    .spark-wrap {
+        margin-top: 10px;
+        background: #0d1117; border: 1px solid #21262d;
+        border-radius: 8px; padding: 4px;
+        overflow: hidden;
+    }
+    .spark-canvas { display: block; width: 100%; height: 56px; }
+
+    /* Топ-процессы */
+    .top-procs {
+        margin-top: 10px; font-size: 0.74rem;
+        font-family: ui-monospace, monospace; color: #8b949e;
+        line-height: 1.7; word-break: break-word;
+    }
+
+    .error-msg {
+        color: #f85149; font-size: 0.8rem;
+        font-family: ui-monospace, monospace;
+        padding: 8px 12px; background: rgba(248,81,73,0.08);
+        border-radius: 8px;
+        word-break: break-word;
+    }
+
+    footer {
+        margin-top: 60px; padding-top: 24px;
+        border-top: 1px solid #30363d;
+        color: #484f58; font-size: 0.8rem; text-align: center;
+    }
+    code {
+        background: rgba(110,118,129,0.15); padding: 2px 6px;
+        border-radius: 4px; color: #8b949e;
+        font-family: ui-monospace, monospace;
+    }
+</style>
+</head>
+<body>
+<div class="container">
+
+    <header>
+        <h1>Мониторинг</h1>
+        <a href="/" class="back-link">← К мостам</a>
+        <div class="spacer"></div>
+        <div class="status-info">
+            <span class="dot"></span>
+            <span id="updated">обновление...</span>
+        </div>
+    </header>
+
+    <div class="summary" id="summary"></div>
+    <div class="hosts" id="hosts"></div>
+
+    <footer>
+        morozovka-bridge · мониторинг инфраструктуры · авто-обновление 5 сек
+    </footer>
+
+</div>
+
+<script>
+const REFRESH_MS = 5000;
+const SAMPLES = 60;
+
+// Хранилище истории по каждому хосту
+const history = {};
+
+function fmtBytes(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    if (bytes < 1024 * 1024 * 1024) return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+    return (bytes / 1024 / 1024 / 1024).toFixed(2) + ' GB';
+}
+
+function fmtKb(kb) {
+    return fmtBytes(kb * 1024);
+}
+
+function fmtUptime(seconds) {
+    const d = Math.floor(seconds / 86400);
+    const h = Math.floor((seconds % 86400) / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    if (d > 0) return `${d}д ${h}ч`;
+    if (h > 0) return `${h}ч ${m}м`;
+    return `${m}м`;
+}
+
+function fmtLoad(load) {
+    return load.split(' ').map(x => parseFloat(x).toFixed(2)).join(' / ');
+}
+
+function barClass(pct) {
+    if (pct >= 80) return 'fill-red';
+    if (pct >= 60) return 'fill-yellow';
+    return 'fill-green';
+}
+
+function renderSummary(hosts) {
+    const total = hosts.length;
+    const online = hosts.filter(h => h.ok).length;
+
+    let sumCpu = 0, cntCpu = 0;
+    let sumMem = 0, cntMem = 0;
+    for (const h of hosts) {
+        if (!h.ok) continue;
+        sumCpu += parseFloat(h.cpu_pct || 0); cntCpu++;
+        sumMem += parseFloat(h.mem_pct || 0); cntMem++;
+    }
+
+    const avgCpu = cntCpu ? (sumCpu / cntCpu).toFixed(1) : '—';
+    const avgMem = cntMem ? (sumMem / cntMem).toFixed(1) : '—';
+
+    const onlineCls = online === total ? 'good' : (online > 0 ? 'warn' : 'bad');
+
+    document.getElementById('summary').innerHTML = `
+        <div class="sum-card"><div class="label">Хосты</div>
+            <div class="value ${onlineCls}">${online} / ${total}</div></div>
+        <div class="sum-card"><div class="label">Средняя CPU</div>
+            <div class="value">${avgCpu}${avgCpu === '—' ? '' : '%'}</div></div>
+        <div class="sum-card"><div class="label">Средняя RAM</div>
+            <div class="value">${avgMem}${avgMem === '—' ? '' : '%'}</div></div>
+    `;
+}
+
+function renderHost(h) {
+    if (!h.ok) {
+        return `
+            <div class="host offline">
+                <div class="host-head">
+                    <div>
+                        <div class="name">${h.name}</div>
+                        <div class="meta">${h.host} · ${h.role}</div>
+                    </div>
+                    <span class="badge off">offline</span>
+                </div>
+                <div class="error-msg">${h.error || 'недоступен'}</div>
+            </div>
+        `;
+    }
+
+    const cpu = parseFloat(h.cpu_pct);
+    const mem = parseFloat(h.mem_pct);
+    const disk = parseFloat(h.disk_pct);
+    const memUsed = fmtKb(h.mem_used_kb);
+    const memTotal = fmtKb(h.mem_total_kb);
+    const diskUsed = fmtKb(h.disk_used_kb);
+    const diskTotal = fmtKb(h.disk_total_kb);
+
+    const temp = h.temp_c > 0 ? `${h.temp_c}°C` : '—';
+    const tempCls = h.temp_c >= 80 ? 'bad' : (h.temp_c >= 65 ? 'warn' : '');
+
+    const netRx = fmtBytes(h.net_rx);
+    const netTx = fmtBytes(h.net_tx);
+
+    const topProcs = (h.top || '').split(';').filter(x => x).join(' · ');
+
+    return `
+        <div class="host">
+            <div class="host-head">
+                <div>
+                    <div class="name">${h.name}</div>
+                    <div class="meta">${h.host} · ${h.role} · ${h.hostname}</div>
+                </div>
+                <span class="badge on">online</span>
+            </div>
+
+            <div class="bar-row">
+                <span class="bar-label">CPU</span>
+                <div class="bar-track"><div class="bar-fill ${barClass(cpu)}" style="width:${cpu}%"></div></div>
+                <span class="bar-value">${cpu.toFixed(1)}%</span>
+            </div>
+
+            <div class="bar-row">
+                <span class="bar-label">RAM</span>
+                <div class="bar-track"><div class="bar-fill ${barClass(mem)}" style="width:${mem}%"></div></div>
+                <span class="bar-value">${memUsed} / ${memTotal}</span>
+            </div>
+
+            <div class="bar-row">
+                <span class="bar-label">Disk</span>
+                <div class="bar-track"><div class="bar-fill ${barClass(disk)}" style="width:${disk}%"></div></div>
+                <span class="bar-value">${diskUsed} / ${diskTotal}</span>
+            </div>
+
+            <div class="host-meta">
+                <span class="k">Uptime</span><span class="v">${fmtUptime(h.uptime)}</span>
+                <span class="k">Load</span><span class="v">${fmtLoad(h.load)}</span>
+                <span class="k">Ядра</span><span class="v">${h.cores}</span>
+                <span class="k">Темп</span><span class="v">${temp}</span>
+                <span class="k">Net RX</span><span class="v">${netRx}</span>
+                <span class="k">Net TX</span><span class="v">${netTx}</span>
+            </div>
+
+            <div class="spark-wrap">
+                <canvas class="spark-canvas" data-host="${h.name}" width="600" height="56"></canvas>
+            </div>
+
+            ${topProcs ? `<div class="top-procs">top: ${topProcs}</div>` : ''}
+        </div>
+    `;
+}
+
+function drawSpark(canvas, samples) {
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width, H = canvas.height;
+    ctx.clearRect(0, 0, W, H);
+
+    // Сетка
+    ctx.strokeStyle = 'rgba(48, 54, 61, 0.5)';
+    ctx.lineWidth = 1;
+    for (let i = 1; i < 4; i++) {
+        const y = (H / 4) * i;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(W, y);
+        ctx.stroke();
+    }
+
+    if (!samples.cpu || samples.cpu.length < 2) return;
+
+    const step = W / (SAMPLES - 1);
+
+    const drawLine = (arr, color) => {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        const offset = SAMPLES - arr.length;
+        for (let i = 0; i < arr.length; i++) {
+            const x = (offset + i) * step;
+            const y = H - (arr[i] / 100) * H;
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+    };
+
+    drawLine(samples.cpu, '#58a6ff');
+    drawLine(samples.mem, '#f778ba');
+}
+
+function updateCharts(hosts) {
+    for (const h of hosts) {
+        if (!h.ok) continue;
+        const c = document.querySelector(`canvas[data-host="${h.name}"]`);
+        if (!c) continue;
+        drawSpark(c, history[h.name] || {cpu: [], mem: []});
+    }
+}
+
+async function reload() {
+    try {
+        const r = await fetch('/api/metrics');
+        const data = await r.json();
+        if (!data.ok) return;
+
+        // Обновляем историю
+        for (const h of data.hosts) {
+            if (!history[h.name]) history[h.name] = {cpu: [], mem: []};
+            if (h.ok) {
+                history[h.name].cpu.push(parseFloat(h.cpu_pct));
+                history[h.name].mem.push(parseFloat(h.mem_pct));
+                if (history[h.name].cpu.length > SAMPLES) history[h.name].cpu.shift();
+                if (history[h.name].mem.length > SAMPLES) history[h.name].mem.shift();
+            }
+        }
+
+        renderSummary(data.hosts);
+        document.getElementById('hosts').innerHTML = data.hosts.map(renderHost).join('');
+        updateCharts(data.hosts);
+
+        document.getElementById('updated').textContent =
+            'обновлено ' + new Date().toLocaleTimeString();
+    } catch (e) {
+        document.getElementById('updated').textContent = 'ошибка: ' + e;
+    }
+}
+
+reload();
+setInterval(reload, REFRESH_MS);
+</script>
+</body>
+</html>
