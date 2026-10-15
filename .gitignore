@@ -4,3 +4,4 @@ config.env
 *.bak
 .DS_Store
 /tmp/
+/__pycache__/
