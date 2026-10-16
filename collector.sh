@@ -1,6 +1,6 @@
 #!/bin/bash
 # collector.sh — сбор метрик хоста, вывод одной строки JSON
-# Принудительно ставим C-локаль, чтобы printf/awk не портили числа запятыми.
+# Принудительно C-локаль, чтобы printf/awk не портили числа запятыми.
 export LC_ALL=C
 export LANG=C
 set -u
@@ -16,7 +16,7 @@ read -r L1 L5 L15 _ < /proc/loadavg
 # Ядра CPU
 CORES=$(nproc 2>/dev/null || grep -c ^processor /proc/cpuinfo)
 
-# CPU usage — два снимка /proc/stat с интервалом 0.4с
+# CPU usage — два снимка /proc/stat
 cpu_snap() {
     awk '/^cpu / {t=0; for(i=2;i<=NF;i++) t+=$i; idle=$5+$6; print t, idle}' /proc/stat
 }
@@ -42,10 +42,33 @@ SWAP_TOTAL=$(awk '/^SwapTotal:/ {print $2}' /proc/meminfo)
 SWAP_FREE=$(awk  '/^SwapFree:/  {print $2}' /proc/meminfo)
 SWAP_USED=$((SWAP_TOTAL - SWAP_FREE))
 
-# Disk / (kB)
-DISK_LINE=$(df -k / | awk 'NR==2 {print $2, $3, $5}')
-read -r DISK_TOTAL DISK_USED DISK_PCT_RAW <<< "$DISK_LINE"
-DISK_PCT=${DISK_PCT_RAW%\%}
+# Все реальные файловые системы (JSON-массив)
+# Исключаем tmpfs, devtmpfs, squashfs, overlay и служебные разделы.
+DISKS_JSON=$(df -kT 2>/dev/null | awk '
+BEGIN { printf "["; first=1 }
+NR>1 {
+    fstype = $2
+    if (fstype !~ /^(ext2|ext3|ext4|xfs|btrfs|zfs|f2fs|vfat|ntfs|exfat)$/) next
+
+    # монтирование может содержать пробелы — берём с 7-го поля и далее
+    mount = $7
+    for (i = 8; i <= NF; i++) mount = mount " " $i
+
+    # пропускаем служебные
+    if (mount == "/boot" || mount == "/boot/efi") next
+    if (mount ~ /^\/snap/) next
+    if (mount ~ /^\/var\/lib\/docker/) next
+    if (mount ~ /^\/run\//) next
+
+    pct = $6
+    gsub(/%/, "", pct)
+
+    if (!first) printf ","
+    first = 0
+    printf "{\"mount\":\"%s\",\"fstype\":\"%s\",\"total_kb\":%d,\"used_kb\":%d,\"pct\":%d}", mount, fstype, $3, $4, pct
+}
+END { printf "]" }
+')
 
 # Температура (°C)
 TEMP_C=0
@@ -64,19 +87,19 @@ for tz in /sys/class/thermal/thermal_zone*/temp; do
     fi
 done
 
-# Сеть — сумма по всем не-lo интерфейсам. Принудительно целые через %d.
+# Сеть — сумма по всем не-lo интерфейсам
 read -r NET_RX NET_TX <<< "$(awk 'NR>2 {
     iface=$1; sub(/:$/, "", iface);
     if (iface != "lo" && iface !~ /^(docker|veth|br-)/) { rx+=$2; tx+=$10 }
 } END { printf "%d %d", rx+0, tx+0 }' /proc/net/dev)"
 
-# Топ-3 процесса по CPU
-TOP=$(ps -eo pcpu=,comm= --sort=-pcpu 2>/dev/null | head -3 \
+# Топ-5 процессов по CPU
+TOP=$(ps -eo pcpu=,comm= --sort=-pcpu 2>/dev/null | head -5 \
       | awk '{cpu=$1; $1=""; sub(/^[ \t]+/, ""); printf "%s:%.1f;", $0, cpu}')
 TOP=${TOP%;}
 
-# Вывод JSON одной строкой
-printf '{"hostname":"%s","uptime":%d,"load":"%s %s %s","cores":%d,"cpu_pct":%s,"mem_total_kb":%d,"mem_used_kb":%d,"mem_pct":%s,"swap_total_kb":%d,"swap_used_kb":%d,"disk_total_kb":%d,"disk_used_kb":%d,"disk_pct":%s,"temp_c":%d,"net_rx":%d,"net_tx":%d,"top":"%s"}\n' \
+# Вывод JSON
+printf '{"hostname":"%s","uptime":%d,"load":"%s %s %s","cores":%d,"cpu_pct":%s,"mem_total_kb":%d,"mem_used_kb":%d,"mem_pct":%s,"swap_total_kb":%d,"swap_used_kb":%d,"disks":%s,"temp_c":%d,"net_rx":%d,"net_tx":%d,"top":"%s"}\n' \
     "$HOSTNAME" "$UPTIME" "$L1" "$L5" "$L15" "$CORES" "$CPU_PCT" \
     "$MEM_TOTAL" "$MEM_USED" "$MEM_PCT" "$SWAP_TOTAL" "$SWAP_USED" \
-    "$DISK_TOTAL" "$DISK_USED" "$DISK_PCT" "$TEMP_C" "$NET_RX" "$NET_TX" "$TOP"
+    "$DISKS_JSON" "$TEMP_C" "$NET_RX" "$NET_TX" "$TOP"

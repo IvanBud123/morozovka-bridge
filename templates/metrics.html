@@ -39,7 +39,6 @@
     }
     @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .35 } }
 
-    /* Сводка */
     .summary {
         display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
         gap: 14px; margin-bottom: 28px;
@@ -60,7 +59,6 @@
     .sum-card .value.warn { color: #d29922; }
     .sum-card .value.bad  { color: #f85149; }
 
-    /* Сетка хостов */
     .hosts {
         display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
         gap: 16px;
@@ -71,11 +69,20 @@
         border: 1px solid #30363d; border-radius: 14px;
         padding: 18px 20px;
         backdrop-filter: blur(8px);
-        transition: border-color .2s, box-shadow .2s;
+        transition: border-color .2s, box-shadow .2s, transform .15s;
+        cursor: pointer;
     }
-    .host:hover { border-color: #58a6ff; box-shadow: 0 8px 28px rgba(88,166,255,0.12); }
-    .host.offline { opacity: 0.55; }
-    .host.offline:hover { border-color: #f85149; box-shadow: 0 8px 28px rgba(248,81,73,0.12); }
+    .host:hover {
+        border-color: #58a6ff;
+        box-shadow: 0 8px 28px rgba(88,166,255,0.18);
+        transform: translateY(-2px);
+    }
+    .host.offline { opacity: 0.55; cursor: default; }
+    .host.offline:hover {
+        border-color: #f85149;
+        box-shadow: 0 8px 28px rgba(248,81,73,0.12);
+        transform: none;
+    }
 
     .host-head {
         display: flex; align-items: flex-start;
@@ -97,7 +104,6 @@
     .badge.on  { background: rgba(63,185,80,0.15); color: #3fb950; }
     .badge.off { background: rgba(248,81,73,0.15); color: #f85149; }
 
-    /* Полоски прогресса */
     .bar-row {
         display: flex; align-items: center; gap: 10px;
         margin-bottom: 8px; font-size: 0.82rem;
@@ -116,7 +122,7 @@
         border-radius: 4px;
     }
     .bar-row .bar-value {
-        width: 92px; text-align: right;
+        width: 118px; text-align: right;
         font-family: ui-monospace, monospace; font-size: 0.76rem;
         color: #c9d1d9;
     }
@@ -125,7 +131,6 @@
     .fill-yellow { background: linear-gradient(90deg, #9e6a03, #d29922); }
     .fill-red    { background: linear-gradient(90deg, #a40e26, #f85149); }
 
-    /* Метаданные */
     .host-meta {
         display: grid; grid-template-columns: 1fr 1fr;
         gap: 6px 16px; margin-top: 12px; margin-bottom: 12px;
@@ -137,7 +142,6 @@
         color: #c9d1d9; text-align: right;
     }
 
-    /* Спарклайн */
     .spark-wrap {
         margin-top: 10px;
         background: #0d1117; border: 1px solid #21262d;
@@ -146,11 +150,15 @@
     }
     .spark-canvas { display: block; width: 100%; height: 56px; }
 
-    /* Топ-процессы */
     .top-procs {
         margin-top: 10px; font-size: 0.74rem;
         font-family: ui-monospace, monospace; color: #8b949e;
         line-height: 1.7; word-break: break-word;
+    }
+
+    .disks-hint {
+        font-size: 0.72rem; color: #8b949e;
+        margin-top: 4px; font-family: ui-monospace, monospace;
     }
 
     .error-msg {
@@ -190,7 +198,7 @@
     <div class="hosts" id="hosts"></div>
 
     <footer>
-        morozovka-bridge · мониторинг инфраструктуры · авто-обновление 5 сек
+        morozovka-bridge · мониторинг · авто-обновление 5 сек · клик по хосту — детали
     </footer>
 
 </div>
@@ -198,8 +206,6 @@
 <script>
 const REFRESH_MS = 5000;
 const SAMPLES = 60;
-
-// Хранилище истории по каждому хосту
 const history = {};
 
 function fmtBytes(bytes) {
@@ -208,11 +214,7 @@ function fmtBytes(bytes) {
     if (bytes < 1024 * 1024 * 1024) return (bytes / 1024 / 1024).toFixed(1) + ' MB';
     return (bytes / 1024 / 1024 / 1024).toFixed(2) + ' GB';
 }
-
-function fmtKb(kb) {
-    return fmtBytes(kb * 1024);
-}
-
+function fmtKb(kb) { return fmtBytes(kb * 1024); }
 function fmtUptime(seconds) {
     const d = Math.floor(seconds / 86400);
     const h = Math.floor((seconds % 86400) / 3600);
@@ -221,32 +223,31 @@ function fmtUptime(seconds) {
     if (h > 0) return `${h}ч ${m}м`;
     return `${m}м`;
 }
-
 function fmtLoad(load) {
     return load.split(' ').map(x => parseFloat(x).toFixed(2)).join(' / ');
 }
-
 function barClass(pct) {
     if (pct >= 80) return 'fill-red';
     if (pct >= 60) return 'fill-yellow';
     return 'fill-green';
 }
+function pickRootDisk(h) {
+    const disks = h.disks || [];
+    if (!disks.length) return { total_kb: 0, used_kb: 0, pct: 0, mount: '/' };
+    return disks.find(d => d.mount === '/') || disks[0];
+}
 
 function renderSummary(hosts) {
     const total = hosts.length;
     const online = hosts.filter(h => h.ok).length;
-
-    let sumCpu = 0, cntCpu = 0;
-    let sumMem = 0, cntMem = 0;
+    let sumCpu = 0, cntCpu = 0, sumMem = 0, cntMem = 0;
     for (const h of hosts) {
         if (!h.ok) continue;
         sumCpu += parseFloat(h.cpu_pct || 0); cntCpu++;
         sumMem += parseFloat(h.mem_pct || 0); cntMem++;
     }
-
     const avgCpu = cntCpu ? (sumCpu / cntCpu).toFixed(1) : '—';
     const avgMem = cntMem ? (sumMem / cntMem).toFixed(1) : '—';
-
     const onlineCls = online === total ? 'good' : (online > 0 ? 'warn' : 'bad');
 
     document.getElementById('summary').innerHTML = `
@@ -277,22 +278,25 @@ function renderHost(h) {
 
     const cpu = parseFloat(h.cpu_pct);
     const mem = parseFloat(h.mem_pct);
-    const disk = parseFloat(h.disk_pct);
+    const disks = h.disks || [];
+    const rootDisk = pickRootDisk(h);
+    const diskPct = parseFloat(rootDisk.pct || 0);
+    const diskUsed = fmtKb(rootDisk.used_kb);
+    const diskTotal = fmtKb(rootDisk.total_kb);
+
     const memUsed = fmtKb(h.mem_used_kb);
     const memTotal = fmtKb(h.mem_total_kb);
-    const diskUsed = fmtKb(h.disk_used_kb);
-    const diskTotal = fmtKb(h.disk_total_kb);
-
     const temp = h.temp_c > 0 ? `${h.temp_c}°C` : '—';
-    const tempCls = h.temp_c >= 80 ? 'bad' : (h.temp_c >= 65 ? 'warn' : '');
-
     const netRx = fmtBytes(h.net_rx);
     const netTx = fmtBytes(h.net_tx);
-
     const topProcs = (h.top || '').split(';').filter(x => x).join(' · ');
 
+    const diskHint = disks.length > 1
+        ? `<div class="disks-hint">показан ${rootDisk.mount}, всего ФС: ${disks.length}</div>`
+        : '';
+
     return `
-        <div class="host">
+        <div class="host" onclick="location.href='/host/${h.name}'">
             <div class="host-head">
                 <div>
                     <div class="name">${h.name}</div>
@@ -315,9 +319,10 @@ function renderHost(h) {
 
             <div class="bar-row">
                 <span class="bar-label">Disk</span>
-                <div class="bar-track"><div class="bar-fill ${barClass(disk)}" style="width:${disk}%"></div></div>
+                <div class="bar-track"><div class="bar-fill ${barClass(diskPct)}" style="width:${diskPct}%"></div></div>
                 <span class="bar-value">${diskUsed} / ${diskTotal}</span>
             </div>
+            ${diskHint}
 
             <div class="host-meta">
                 <span class="k">Uptime</span><span class="v">${fmtUptime(h.uptime)}</span>
@@ -341,36 +346,24 @@ function drawSpark(canvas, samples) {
     const ctx = canvas.getContext('2d');
     const W = canvas.width, H = canvas.height;
     ctx.clearRect(0, 0, W, H);
-
-    // Сетка
     ctx.strokeStyle = 'rgba(48, 54, 61, 0.5)';
     ctx.lineWidth = 1;
     for (let i = 1; i < 4; i++) {
         const y = (H / 4) * i;
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(W, y);
-        ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
     }
-
     if (!samples.cpu || samples.cpu.length < 2) return;
-
     const step = W / (SAMPLES - 1);
-
     const drawLine = (arr, color) => {
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 2;
-        ctx.beginPath();
+        ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.beginPath();
         const offset = SAMPLES - arr.length;
         for (let i = 0; i < arr.length; i++) {
             const x = (offset + i) * step;
             const y = H - (arr[i] / 100) * H;
-            if (i === 0) ctx.moveTo(x, y);
-            else ctx.lineTo(x, y);
+            if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
         }
         ctx.stroke();
     };
-
     drawLine(samples.cpu, '#58a6ff');
     drawLine(samples.mem, '#f778ba');
 }
@@ -390,7 +383,6 @@ async function reload() {
         const data = await r.json();
         if (!data.ok) return;
 
-        // Обновляем историю
         for (const h of data.hosts) {
             if (!history[h.name]) history[h.name] = {cpu: [], mem: []};
             if (h.ok) {
@@ -404,7 +396,6 @@ async function reload() {
         renderSummary(data.hosts);
         document.getElementById('hosts').innerHTML = data.hosts.map(renderHost).join('');
         updateCharts(data.hosts);
-
         document.getElementById('updated').textContent =
             'обновлено ' + new Date().toLocaleTimeString();
     } catch (e) {

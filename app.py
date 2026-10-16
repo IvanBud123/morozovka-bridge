@@ -10,7 +10,9 @@ import os
 import re
 import shlex
 import subprocess
+import threading
 import time
+from collections import deque
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import wraps
 from threading import Lock
@@ -28,12 +30,12 @@ SSH_KEY           = os.environ.get("SSH_KEY", "/root/.ssh/id_ed25519")
 WEB_PASSWORD      = os.environ.get("WEB_PASSWORD", "")
 SERVICE_PREFIX    = "socat-"
 
-# Мосты, обслуживаемые самим bridge-webui (нет отдельного socat-сервиса)
+# Мосты, обслуживаемые самим bridge-webui
 VIRTUAL_BRIDGES = {
     8080: {"name": "bridge-webui", "dest": "127.0.0.1:8080"},
 }
 
-# Хосты для мониторинга. local=True — собираем локально (без SSH).
+# Хосты для мониторинга
 MONITOR_HOSTS = [
     {"name": "morozovka-rpi",   "host": "localhost",     "role": "шлюз",       "local": True},
     {"name": "morozovka-super", "host": "192.168.50.2",  "role": "сервер",     "local": False},
@@ -46,10 +48,15 @@ MONITOR_HOSTS = [
 ]
 
 COLLECTOR_PATH = "/opt/bridge-webui/collector.sh"
-METRICS_CACHE_TTL = 4  # сек
+METRICS_CACHE_TTL = 4
 
-_metrics_cache = {}          # {name: {"ts": float, "data": dict}}
+HISTORY_MAX = 1080  # ~6 часов при сборе раз в 20 сек
+
+_metrics_cache = {}
 _metrics_lock = Lock()
+
+_history = {}          # {host: {ts: deque, cpu: deque, ...}}
+_history_lock = Lock()
 
 
 # ─────────────────────────── HELPERS ──────────────────────────
@@ -86,7 +93,6 @@ def ssh_run(remote_cmd, timeout=20):
 
 
 def ssh_generic(host, remote_cmd, timeout=20):
-    """SSH к любому хосту (не обязательно внешнему)."""
     cmd = [
         "ssh",
         "-i", SSH_KEY,
@@ -116,11 +122,9 @@ def require_auth(f):
 
 # ─────────────────────────── METRICS ──────────────────────────
 def collect_one(host_conf):
-    """Собрать метрики с одного хоста (локально или по SSH)."""
     name = host_conf["name"]
     addr = host_conf["host"]
 
-    # Проверка кэша
     with _metrics_lock:
         cached = _metrics_cache.get(name)
         if cached and (time.time() - cached["ts"]) < METRICS_CACHE_TTL:
@@ -143,8 +147,6 @@ def collect_one(host_conf):
         else:
             with open(COLLECTOR_PATH) as f:
                 script = f.read()
-            r = ssh_generic(addr, "bash -s", timeout=15)
-            # Перезапуск с передачей скрипта по stdin
             r = subprocess.run(
                 ["ssh", "-i", SSH_KEY,
                  "-o", "StrictHostKeyChecking=accept-new",
@@ -180,10 +182,49 @@ def collect_all():
         for fut in as_completed(futures):
             results.append(fut.result())
 
-    # Порядок — как в MONITOR_HOSTS
     order = {h["name"]: i for i, h in enumerate(MONITOR_HOSTS)}
     results.sort(key=lambda r: order.get(r["name"], 999))
     return results
+
+
+# ─────────────────────────── HISTORY ──────────────────────────
+def _append_history(name, data):
+    with _history_lock:
+        h = _history.get(name)
+        if h is None:
+            h = {
+                "ts":     deque(maxlen=HISTORY_MAX),
+                "cpu":    deque(maxlen=HISTORY_MAX),
+                "mem":    deque(maxlen=HISTORY_MAX),
+                "net_rx": deque(maxlen=HISTORY_MAX),
+                "net_tx": deque(maxlen=HISTORY_MAX),
+                "load1":  deque(maxlen=HISTORY_MAX),
+                "temp":   deque(maxlen=HISTORY_MAX),
+            }
+            _history[name] = h
+        h["ts"].append(int(time.time()))
+        h["cpu"].append(float(data.get("cpu_pct") or 0))
+        h["mem"].append(float(data.get("mem_pct") or 0))
+        h["net_rx"].append(int(data.get("net_rx") or 0))
+        h["net_tx"].append(int(data.get("net_tx") or 0))
+        try:
+            l1 = float((data.get("load") or "0 0 0").split()[0])
+        except (ValueError, IndexError):
+            l1 = 0.0
+        h["load1"].append(l1)
+        h["temp"].append(int(data.get("temp_c") or 0))
+
+
+def _background_collector():
+    time.sleep(3)
+    while True:
+        try:
+            for h in collect_all():
+                if h.get("ok"):
+                    _append_history(h["name"], h)
+        except Exception:
+            pass
+        time.sleep(20)
 
 
 # ─────────────────────────── BRIDGE STATE ─────────────────────
@@ -304,6 +345,12 @@ def metrics_page():
     return render_template("metrics.html")
 
 
+@app.route("/host/<name>")
+@require_auth
+def host_page(name):
+    return render_template("host.html", host_name=name)
+
+
 @app.route("/api/state")
 @require_auth
 def api_state():
@@ -328,6 +375,34 @@ def api_metrics():
         })
     except Exception as exc:
         return jsonify({"ok": False, "error": str(exc)}), 500
+
+
+@app.route("/api/host/<name>")
+@require_auth
+def api_host(name):
+    if not re.fullmatch(r"[a-zA-Z0-9_-]+", name):
+        return jsonify({"ok": False, "error": "bad name"}), 400
+    for h in MONITOR_HOSTS:
+        if h["name"] == name:
+            return jsonify({"ok": True, "host": collect_one(h)})
+    return jsonify({"ok": False, "error": "not found"}), 404
+
+
+@app.route("/api/history/<name>")
+@require_auth
+def api_history(name):
+    if not re.fullmatch(r"[a-zA-Z0-9_-]+", name):
+        return jsonify({"ok": False, "error": "bad name"}), 400
+
+    with _history_lock:
+        h = _history.get(name)
+        if not h:
+            empty = {"ts": [], "cpu": [], "mem": [], "net_rx": [],
+                     "net_tx": [], "load1": [], "temp": []}
+            return jsonify({"ok": True, "name": name, "history": empty})
+        data = {k: list(v) for k, v in h.items()}
+
+    return jsonify({"ok": True, "name": name, "history": data})
 
 
 @app.route("/api/add", methods=["POST"])
@@ -570,6 +645,9 @@ def api_test(name):
 
 
 if __name__ == "__main__":
+    # Фоновый сбор истории метрик
+    threading.Thread(target=_background_collector, daemon=True).start()
+
     host = os.environ.get("WEB_HOST", "0.0.0.0")
     port = int(os.environ.get("WEB_PORT", "8080"))
     app.run(host=host, port=port, debug=False)
